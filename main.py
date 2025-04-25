@@ -1,7 +1,7 @@
 from dataset import create_wall_dataloader
 from evaluator import ProbingEvaluator
 import torch
-from models import JEPAWorldModel
+from models import JEPA, JEPAWorldModel
 import glob
 
 
@@ -46,9 +46,10 @@ def load_data(device):
 
 def load_model():
     """Load or initialize the model."""
-    # TODO: Replace MockModel with your trained model
     device = get_device()
-    model = JEPAWorldModel(
+    
+    # First create the JEPA model
+    jepa_model = JEPA(
         input_channels=2,
         repr_dim=256,
         latent_dim=16,
@@ -57,7 +58,16 @@ def load_model():
         use_vicreg=True,
         device=device
     )
-    model.load_state_dict(torch.load("model_weights_final.pth")['model_state_dict'])
+    
+    # Then wrap it in JEPAWorldModel
+    model = JEPAWorldModel(jepa_model=jepa_model)
+    
+    # Load weights if they exist
+    try:
+        model.load_state_dict(torch.load("model_weights_final.pth")['model_state_dict'])
+    except FileNotFoundError:
+        print("No saved model weights found. Starting with fresh model.")
+    
     return model
 
 

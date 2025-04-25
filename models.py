@@ -99,20 +99,23 @@ class JEPA(nn.Module):
         
         # Encoder: takes states (images) and encodes them into representations
         self.encoder = nn.Sequential(
-            nn.Conv2d(input_channels, 32, kernel_size=3, stride=2, padding=1),  # 32x32
+            nn.Conv2d(input_channels, 32, kernel_size=3, stride=1, padding=1),  # 64x64
             nn.BatchNorm2d(32),
             nn.ReLU(inplace=True),
-            nn.Conv2d(32, 64, kernel_size=3, stride=2, padding=1),  # 16x16
+            nn.Conv2d(32, 64, kernel_size=3, stride=2, padding=1),  # 32x32
             nn.BatchNorm2d(64),
             nn.ReLU(inplace=True),
-            nn.Conv2d(64, 128, kernel_size=3, stride=2, padding=1),  # 8x8
+            nn.Conv2d(64, 128, kernel_size=3, stride=2, padding=1),  # 16x16
             nn.BatchNorm2d(128),
             nn.ReLU(inplace=True),
-            nn.Conv2d(128, 256, kernel_size=3, stride=2, padding=1),  # 4x4
+            nn.Conv2d(128, 256, kernel_size=3, stride=2, padding=1),  # 8x8
             nn.BatchNorm2d(256),
             nn.ReLU(inplace=True),
+            nn.Conv2d(256, 512, kernel_size=3, stride=2, padding=1),  # 4x4
+            nn.BatchNorm2d(512),
+            nn.ReLU(inplace=True),
             nn.Flatten(),
-            nn.Linear(256 * 4 * 4, hidden_dim),
+            nn.Linear(512 * 4 * 4, hidden_dim),
             nn.ReLU(inplace=True),
             nn.Linear(hidden_dim, repr_dim)
         )
@@ -362,45 +365,58 @@ class JEPA(nn.Module):
 
 class JEPAWorldModel(nn.Module):
     """
-    JEPA-based world model for the two-room environment that satisfies the evaluation interface.
-    Includes VICReg regularization to prevent collapse.
+    Wrapper around JEPA model that provides a forward pass interface compatible with the evaluator.
     """
-    def __init__(
-        self,
-        input_channels: int = 2,
-        repr_dim: int = 256,
-        latent_dim: int = 16,
-        hidden_dim: int = 128,
-        use_latent: bool = True,
-        use_vicreg: bool = True,
-        device: str = "cuda"
-    ):
+    def __init__(self, jepa_model: JEPA):
         super().__init__()
-        self.repr_dim = repr_dim
-        self.device = device
+        self.jepa = jepa_model
+        self.repr_dim = jepa_model.repr_dim
         
-        # Create the JEPA model
-        self.jepa = JEPA(
-            input_channels=input_channels,
-            repr_dim=repr_dim,
-            latent_dim=latent_dim,
-            hidden_dim=hidden_dim,
-            use_latent=use_latent,
-            use_vicreg=use_vicreg,
-            device=device
-        )
-    
-    def forward(self, states, actions):
+    def forward(self, states: torch.Tensor, actions: torch.Tensor) -> torch.Tensor:
         """
-        Forward pass designed to match the interface expected by the evaluator.
+        Forward pass that takes states and actions and returns predicted representations.
         
         Args:
-            states: [B, 1, C, H, W] initial state
-            actions: [B, T, 2] actions sequence
+            states: Tensor of shape (batch_size, 1, channels, height, width) - initial state
+            actions: Tensor of shape (batch_size, seq_len, action_dim) - sequence of actions
             
         Returns:
-            representations: [B, T+1, repr_dim] predicted representations
+            Tensor of shape (seq_len+1, batch_size, repr_dim) - sequence of predicted representations
         """
-        # Forward pass through the JEPA model
-        predictions = self.jepa(states, actions, deterministic=True)
-        return predictions[:, 1:, :]
+        batch_size = states.shape[0]
+        seq_len = actions.shape[1]
+        
+        # Get initial state representation
+        initial_repr = self.jepa.encode(states[:, 0])  # [B, repr_dim]
+        
+        # Initialize predictions with initial representation
+        predictions = [initial_repr]
+        
+        # Sample latent variables for the entire sequence
+        if self.jepa.use_latent:
+            latents, _ = self.jepa.sample_latent(states, actions, deterministic=False)
+        
+        # Recurrently predict future representations
+        current_repr = initial_repr
+        
+        for t in range(seq_len):
+            action = actions[:, t]  # [B, action_dim]
+            
+            # Prepare predictor input
+            if self.jepa.use_latent:
+                z = latents[:, t]  # [B, latent_dim]
+                pred_input = torch.cat([current_repr, action, z], dim=1)
+            else:
+                pred_input = torch.cat([current_repr, action], dim=1)
+            
+            # Predict next representation
+            next_repr = self.jepa.predictor(pred_input)
+            predictions.append(next_repr)
+            
+            # Update current representation for next step
+            current_repr = next_repr
+        
+        # Stack predictions and transpose to match evaluator's expected shape
+        predictions = torch.stack(predictions, dim=0)  # [T+1, B, repr_dim]
+        
+        return predictions

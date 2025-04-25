@@ -84,16 +84,19 @@ def train_jepa(args, train_loader, val_loader, model, device):
         vicreg_loss_total = 0
         
         for batch_idx, batch in enumerate(train_loader):
-            states = batch.states.to(device)
-            actions = batch.actions.to(device)
+            states = batch.states.to(device)  # [B, T+1, C, H, W]
+            actions = batch.actions.to(device)  # [B, T, 2]
             
             # Forward pass
-            # Encode all states to get ground truth representations
-            true_reprs = jepa.encode(states)
+            # Get initial state and encode it
+            init_state = states[:, 0:1]  # [B, 1, C, H, W]
             
-            # Sample latent variables and get predicted representations
-            latents, latent_info = jepa.sample_latent(states, actions, deterministic=False)
-            pred_reprs = model(states, actions)
+            # Get predicted representations
+            pred_reprs = model(init_state, actions)  # [T+1, B, repr_dim]
+            
+            # Get ground truth representations
+            true_reprs = jepa.encode(states)  # [B, T+1, repr_dim]
+            true_reprs = true_reprs.transpose(0, 1)  # [T+1, B, repr_dim]
             
             # Calculate prediction loss - MSE between predicted and true representations
             pred_loss = F.mse_loss(pred_reprs, true_reprs)
@@ -102,6 +105,7 @@ def train_jepa(args, train_loader, val_loader, model, device):
             
             # 1. Latent variable regularization
             if jepa.use_latent:
+                _, latent_info = jepa.sample_latent(init_state, actions, deterministic=False)
                 reg_loss = jepa.compute_latent_regularization(latent_info)
             else:
                 reg_loss = torch.tensor(0.0).to(device)
@@ -109,7 +113,7 @@ def train_jepa(args, train_loader, val_loader, model, device):
             # 2. VICReg regularization to prevent collapse
             if not args.no_vicreg:
                 # Apply VICReg to final predicted representations in batch
-                last_reprs = pred_reprs[:, -1]  # [B, repr_dim]
+                last_reprs = pred_reprs[-1]  # [B, repr_dim]
                 vicreg_loss, vicreg_info = jepa.compute_vicreg_loss(
                     last_reprs, 
                     lambda_var=args.lambda_var,
@@ -165,11 +169,13 @@ def train_jepa(args, train_loader, val_loader, model, device):
                 states = batch.states.to(device)
                 actions = batch.actions.to(device)
                 
-                # Encode all states to get ground truth representations
-                true_reprs = jepa.encode(states)
+                # Forward pass
+                init_state = states[:, 0:1]
+                pred_reprs = model(init_state, actions)
                 
-                # Get predicted representations (deterministic for validation)
-                pred_reprs = model(states, actions)
+                # Get ground truth representations
+                true_reprs = jepa.encode(states)
+                true_reprs = true_reprs.transpose(0, 1)
                 
                 # Calculate prediction loss
                 loss = F.mse_loss(pred_reprs, true_reprs)
