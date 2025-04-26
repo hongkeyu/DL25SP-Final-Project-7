@@ -7,7 +7,7 @@ import argparse
 from torch.utils.data import DataLoader
 
 # Import your JEPA model
-from models import JEPAWorldModel
+from models import JEPAWorldModel, JEPA
 
 # Import dataset and other components
 from dataset import create_wall_dataloader
@@ -18,7 +18,7 @@ from evaluator import ProbingEvaluator
 
 def parse_args():
     parser = argparse.ArgumentParser(description='Train a JEPA model for the wall environment')
-    parser.add_argument('--data_path', type=str, default='/scratch/DL25SP', help='Path to data directory')
+    parser.add_argument('--data_path', type=str, default='.', help='Path to data directory')
     parser.add_argument('--batch_size', type=int, default=64, help='Batch size for training')
     parser.add_argument('--epochs', type=int, default=50, help='Number of epochs to train')
     parser.add_argument('--lr', type=float, default=1e-3, help='Learning rate')
@@ -54,6 +54,7 @@ def create_optimizer_and_scheduler(model, args, train_loader):
         data_loader=train_loader,
         epochs=args.epochs,
         optimizer=optimizer,
+        batch_size=args.batch_size
     )
     
     return optimizer, scheduler
@@ -87,9 +88,13 @@ def train_jepa(args, train_loader, val_loader, model, device):
             states = batch.states.to(device)  # [B, T+1, C, H, W]
             actions = batch.actions.to(device)  # [B, T, 2]
             
+            print("States shape:", states.shape)
+            print("Actions shape:", actions.shape)
+            
             # Forward pass
             # Get initial state and encode it
             init_state = states[:, 0:1]  # [B, 1, C, H, W]
+            print("Init state shape:", init_state.shape)
             
             # Get predicted representations
             pred_reprs = model(init_state, actions)  # [T+1, B, repr_dim]
@@ -211,33 +216,33 @@ def train_jepa(args, train_loader, val_loader, model, device):
 def main():
     args = parse_args()
     
-    # Set random seed
+    # Set random seed for reproducibility
     torch.manual_seed(args.seed)
     np.random.seed(args.seed)
-    if torch.cuda.is_available():
-        torch.cuda.manual_seed(args.seed)
     
-    # Set device
+    # Get device
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    print(f"Using device: {device}")
+    print("Using device:", device)
     
-    # Create dataloaders
+    # Create data loaders
     train_loader = create_wall_dataloader(
         data_path=f"{args.data_path}/train",
-        device="cpu",  # Load data on CPU, will be moved to GPU in training loop
+        probing=False,
+        device=device,
         batch_size=args.batch_size,
-        train=True
+        train=True,
     )
     
     val_loader = create_wall_dataloader(
         data_path=f"{args.data_path}/probe_normal/val",
-        device="cpu",
+        probing=False,
+        device=device,
         batch_size=args.batch_size,
-        train=False
+        train=False,
     )
     
-    # Create model
-    model = JEPAWorldModel(
+    # Create JEPA model first
+    jepa_model = JEPA(
         input_channels=2,
         repr_dim=args.repr_dim,
         latent_dim=args.latent_dim,
@@ -246,6 +251,9 @@ def main():
         use_vicreg=not args.no_vicreg,
         device=device
     )
+    
+    # Then create JEPAWorldModel with the JEPA model
+    model = JEPAWorldModel(jepa_model=jepa_model)
     
     # Print model architecture and parameter count
     total_params = sum(p.numel() for p in model.parameters() if p.requires_grad)

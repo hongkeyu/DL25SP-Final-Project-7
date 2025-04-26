@@ -99,23 +99,23 @@ class JEPA(nn.Module):
         
         # Encoder: takes states (images) and encodes them into representations
         self.encoder = nn.Sequential(
-            nn.Conv2d(input_channels, 32, kernel_size=3, stride=1, padding=1),  # 64x64
+            nn.Conv2d(input_channels, 32, kernel_size=3, stride=1, padding=1),  # 65x65
             nn.BatchNorm2d(32),
             nn.ReLU(inplace=True),
-            nn.Conv2d(32, 64, kernel_size=3, stride=2, padding=1),  # 32x32
+            nn.Conv2d(32, 64, kernel_size=3, stride=2, padding=1),  # 33x33
             nn.BatchNorm2d(64),
             nn.ReLU(inplace=True),
-            nn.Conv2d(64, 128, kernel_size=3, stride=2, padding=1),  # 16x16
+            nn.Conv2d(64, 128, kernel_size=3, stride=2, padding=1),  # 17x17
             nn.BatchNorm2d(128),
             nn.ReLU(inplace=True),
-            nn.Conv2d(128, 256, kernel_size=3, stride=2, padding=1),  # 8x8
+            nn.Conv2d(128, 256, kernel_size=3, stride=2, padding=1),  # 9x9
             nn.BatchNorm2d(256),
             nn.ReLU(inplace=True),
-            nn.Conv2d(256, 512, kernel_size=3, stride=2, padding=1),  # 4x4
+            nn.Conv2d(256, 512, kernel_size=3, stride=2, padding=1),  # 5x5
             nn.BatchNorm2d(512),
             nn.ReLU(inplace=True),
             nn.Flatten(),
-            nn.Linear(512 * 4 * 4, hidden_dim),
+            nn.Linear(512 * 5 * 5, hidden_dim),
             nn.ReLU(inplace=True),
             nn.Linear(hidden_dim, repr_dim)
         )

@@ -70,7 +70,7 @@ class ProbingEvaluator:
         """
         Probes whether the predicted embeddings capture the future locations
         """
-        repr_dim = self.model.repr_dim
+        repr_dim = self.model.jepa.repr_dim
         dataset = self.ds
         model = self.model
 
@@ -114,7 +114,7 @@ class ProbingEvaluator:
                 # TODO: Forward pass through your model
                 init_states = batch.states[:, 0:1]  # BS, 1, C, H, W
                 pred_encs = model(states=init_states, actions=batch.actions)
-                pred_encs = pred_encs.transpose(0, 1)  # # BS, T, D --> T, BS, D
+                # pred_encs is already in shape (T, BS, D)
 
                 # Make sure pred_encs has shape (T, BS, D) at this point
                 ################################################################################
@@ -212,8 +212,7 @@ class ProbingEvaluator:
             # TODO: Forward pass through your model
             init_states = batch.states[:, 0:1]  # BS, 1 C, H, W
             pred_encs = model(states=init_states, actions=batch.actions)
-            # # BS, T, D --> T, BS, D
-            pred_encs = pred_encs.transpose(0, 1)
+            # pred_encs is already in shape (T, BS, D)
 
             # Make sure pred_encs has shape (T, BS, D) at this point
             ################################################################################

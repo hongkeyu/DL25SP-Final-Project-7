@@ -13,7 +13,7 @@ def get_device():
 
 
 def load_data(device):
-    data_path = "/scratch/DL25SP"
+    data_path = "."  # Using current directory since data is in project root
 
     probe_train_ds = create_wall_dataloader(
         data_path=f"{data_path}/probe_normal/train",
@@ -64,9 +64,11 @@ def load_model():
     
     # Load weights if they exist
     try:
-        model.load_state_dict(torch.load("model_weights_final.pth")['model_state_dict'])
+        model.load_state_dict(torch.load("model_weights.pth")['model_state_dict'])
     except FileNotFoundError:
         print("No saved model weights found. Starting with fresh model.")
+    
+    model = model.to(device)
     
     return model
 
