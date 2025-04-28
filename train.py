@@ -7,7 +7,10 @@ import argparse
 from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
+<<<<<<< HEAD
+=======
 from datetime import datetime
+>>>>>>> main
 
 # Import your JEPA model
 from models import JEPAWorldModel, JEPA
@@ -22,8 +25,11 @@ from evaluator import ProbingEvaluator
 def parse_args():
     parser = argparse.ArgumentParser(description='Train a JEPA model for the wall environment')
     parser.add_argument('--data_path', type=str, default='.', help='Path to data directory')
+<<<<<<< HEAD
+=======
     parser.add_argument('--base_save_dir', type=str, default='./outputs', help='Base directory to save runs')
     parser.add_argument('--run_name', type=str, default=None, help='Optional name for the run (overrides timestamp)')
+>>>>>>> main
     parser.add_argument('--batch_size', type=int, default=64, help='Batch size for training')
     parser.add_argument('--epochs', type=int, default=50, help='Number of epochs to train')
     parser.add_argument('--lr', type=float, default=1e-3, help='Learning rate')
@@ -37,8 +43,14 @@ def parse_args():
     parser.add_argument('--vicreg_weight', type=float, default=1.0, help='Weight for VICReg loss')
     parser.add_argument('--lambda_var', type=float, default=25.0, help='Weight for variance term in VICReg')
     parser.add_argument('--lambda_cov', type=float, default=1.0, help='Weight for covariance term in VICReg')
+<<<<<<< HEAD
+    parser.add_argument('--save_dir', type=str, default='./', help='Directory to save model checkpoints')
+    parser.add_argument('--log_interval', type=int, default=10, help='Log interval')
+    parser.add_argument('--seed', type=int, default=42, help='Random seed')
+=======
     parser.add_argument('--log_interval', type=int, default=100, help='Frequency for logging batch metrics to TensorBoard')
     parser.add_argument('--seed', type=int, default=42, help='Random seed for reproducibility')
+>>>>>>> main
     return parser.parse_args()
 
 
@@ -64,6 +76,15 @@ def create_optimizer_and_scheduler(model, args, train_loader):
     return optimizer, scheduler
 
 
+<<<<<<< HEAD
+def train_jepa(args, train_loader, val_loader, model, device):
+    """Train the JEPA model with VICReg regularization."""
+    model.to(device)
+    
+    # Initialize TensorBoard writer
+    log_dir = os.path.join(args.save_dir, 'runs')
+    writer = SummaryWriter(log_dir=log_dir)
+=======
 def train_jepa(args, train_loader, val_loader, model, device, save_dir):
     """Train the JEPA model with VICReg regularization."""
     model.to(device)
@@ -71,15 +92,22 @@ def train_jepa(args, train_loader, val_loader, model, device, save_dir):
     # Initialize TensorBoard writer using the unique save_dir
     # The writer will create subdirectories within save_dir if needed
     writer = SummaryWriter(log_dir=save_dir)
+>>>>>>> main
     
     # Create optimizer and scheduler
     optimizer, scheduler = create_optimizer_and_scheduler(model, args, train_loader)
     
+<<<<<<< HEAD
+    # Create save directory if it doesn't exist
+    os.makedirs(args.save_dir, exist_ok=True)
+    save_path = os.path.join(args.save_dir, 'model_weights.pth')
+=======
     # Define model save paths within the unique save_dir
     best_model_save_path = os.path.join(save_dir, 'model_weights_best.pth')
     final_model_save_path = os.path.join(save_dir, 'model_weights_final.pth')
     checkpoints_dir = os.path.join(save_dir, 'checkpoints')
     os.makedirs(checkpoints_dir, exist_ok=True)
+>>>>>>> main
     
     best_val_loss = float('inf')
     step = 0
@@ -106,14 +134,27 @@ def train_jepa(args, train_loader, val_loader, model, device, save_dir):
             init_state = states[:, 0:1]  # [B, 1, C, H, W]
             
             # Get predicted representations
+<<<<<<< HEAD
+            jepa_outputs = model.jepa(
+                initial_state=init_state,
+                actions=actions,
+                future_states=states[:, 1:] # Pass future states for loss calculation
+            )
+=======
             pred_reprs = model(init_state, actions)  # [T+1, B, repr_dim]
+>>>>>>> main
             
             # Get ground truth representations
             true_reprs = jepa.encode(states)  # [B, T+1, repr_dim]
             true_reprs = true_reprs.transpose(0, 1)  # [T+1, B, repr_dim]
             
+<<<<<<< HEAD
+            # Calculate prediction loss
+            pred_loss = F.mse_loss(jepa_outputs['predicted_reprs'], true_reprs)
+=======
             # Calculate prediction loss - MSE between predicted and true representations
             pred_loss = F.mse_loss(pred_reprs, true_reprs)
+>>>>>>> main
             
             # Calculate regularization losses
             
@@ -127,7 +168,11 @@ def train_jepa(args, train_loader, val_loader, model, device, save_dir):
             # 2. VICReg regularization to prevent collapse
             if not args.no_vicreg:
                 # Apply VICReg to final predicted representations in batch
+<<<<<<< HEAD
+                last_reprs = jepa_outputs['predicted_reprs'][-1]  # [B, repr_dim]
+=======
                 last_reprs = pred_reprs[-1]  # [B, repr_dim]
+>>>>>>> main
                 vicreg_loss, vicreg_info = jepa.compute_vicreg_loss(
                     last_reprs, 
                     lambda_var=args.lambda_var,
@@ -147,6 +192,12 @@ def train_jepa(args, train_loader, val_loader, model, device, save_dir):
             optimizer.step()
             scheduler.adjust_learning_rate(step)
             
+<<<<<<< HEAD
+            # AFTER optimizer.step()
+            model.jepa._update_target_network_ema()
+            
+=======
+>>>>>>> main
             # Log progress and write to TensorBoard
             current_lr = optimizer.param_groups[0]['lr']
             writer.add_scalar('Learning Rate', current_lr, step)
@@ -204,6 +255,17 @@ def train_jepa(args, train_loader, val_loader, model, device, save_dir):
                 
                 # Forward pass
                 init_state = states[:, 0:1]
+<<<<<<< HEAD
+                jepa_outputs = model.jepa(
+                    initial_state=init_state,
+                    actions=actions,
+                    future_states=states[:, 1:] # Pass future states for loss calculation
+                )
+                
+                # Calculate prediction loss
+                pred_loss = F.mse_loss(jepa_outputs['predicted_reprs'], jepa.encode(states))
+                val_loss += pred_loss.item()
+=======
                 pred_reprs = model(init_state, actions)
                 
                 # Get ground truth representations
@@ -213,6 +275,7 @@ def train_jepa(args, train_loader, val_loader, model, device, save_dir):
                 # Calculate prediction loss
                 loss = F.mse_loss(pred_reprs, true_reprs)
                 val_loss += loss.item()
+>>>>>>> main
         
         avg_val_loss = val_loss / len(val_loader)
         print(f"Validation Loss: {avg_val_loss:.4f}")
@@ -220,6 +283,11 @@ def train_jepa(args, train_loader, val_loader, model, device, save_dir):
         # Write validation loss to TensorBoard
         writer.add_scalar('Loss/validation', avg_val_loss, epoch)
         
+<<<<<<< HEAD
+        # Save best model
+        if avg_val_loss < best_val_loss:
+            best_val_loss = avg_val_loss
+=======
         # --- Save checkpoint for the current epoch ---
         epoch_save_path = os.path.join(checkpoints_dir, f'model_epoch_{epoch+1:04d}.pth')
         torch.save({
@@ -234,11 +302,26 @@ def train_jepa(args, train_loader, val_loader, model, device, save_dir):
         if avg_val_loss < best_val_loss:
             best_val_loss = avg_val_loss
             # Save to the renamed best model path
+>>>>>>> main
             torch.save({
                 'epoch': epoch,
                 'model_state_dict': model.state_dict(),
                 'optimizer_state_dict': optimizer.state_dict(),
                 'val_loss': avg_val_loss,
+<<<<<<< HEAD
+            }, save_path)
+            print(f"Model saved to {save_path}")
+    
+    # Save final model
+    final_save_path = os.path.join(args.save_dir, 'model_weights_final.pth')
+    torch.save({
+        'epoch': args.epochs,
+        'model_state_dict': model.state_dict(),
+        'optimizer_state_dict': optimizer.state_dict(),
+        'val_loss': avg_val_loss,
+    }, final_save_path)
+    print(f"Final model saved to {final_save_path}")
+=======
             }, best_model_save_path)
             print(f"New best model saved to {best_model_save_path}")
     
@@ -250,6 +333,7 @@ def train_jepa(args, train_loader, val_loader, model, device, save_dir):
         'val_loss': avg_val_loss, # Last validation loss
     }, final_model_save_path)
     print(f"Final model saved to {final_model_save_path}")
+>>>>>>> main
     
     # Close TensorBoard writer
     writer.close()
@@ -260,6 +344,8 @@ def train_jepa(args, train_loader, val_loader, model, device, save_dir):
 def main():
     args = parse_args()
     
+<<<<<<< HEAD
+=======
     # --- Create unique save directory ---
     base_save_dir = args.base_save_dir
     if args.run_name:
@@ -273,6 +359,7 @@ def main():
     print(f"Saving outputs to: {save_dir}")
     # --- End create unique save directory ---
 
+>>>>>>> main
     # Set random seed for reproducibility
     torch.manual_seed(args.seed)
     np.random.seed(args.seed)
@@ -317,7 +404,11 @@ def main():
     print(f"Total trainable parameters: {total_params:,}")
     
     # Train model
+<<<<<<< HEAD
+    trained_model = train_jepa(args, train_loader, val_loader, model, device)
+=======
     trained_model = train_jepa(args, train_loader, val_loader, model, device, save_dir)
+>>>>>>> main
 
 
 if __name__ == "__main__":
