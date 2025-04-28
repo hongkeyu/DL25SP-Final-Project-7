@@ -11,117 +11,9 @@ def build_mlp(layers_dims: List[int]):
     for i in range(len(layers_dims) - 2):
         layers.append(nn.Linear(layers_dims[i], layers_dims[i + 1]))
         layers.append(nn.BatchNorm1d(layers_dims[i + 1]))
-        layers.append(nn.ReLU(True))
+        layers.append(nn.GELU())  # Changed from ReLU to GELU
     layers.append(nn.Linear(layers_dims[-2], layers_dims[-1]))
     return nn.Sequential(*layers)
-
-
-class ResidualBlock(nn.Module):
-    def __init__(self, in_channels, out_channels, stride=1):
-        super().__init__()
-        self.conv1 = nn.Conv2d(in_channels, out_channels, 3, stride, 1)
-        self.bn1 = nn.BatchNorm2d(out_channels)
-        self.conv2 = nn.Conv2d(out_channels, out_channels, 3, 1, 1)
-        self.bn2 = nn.BatchNorm2d(out_channels)
-        self.act = nn.GELU()
-        
-        self.shortcut = nn.Sequential()
-        if stride != 1 or in_channels != out_channels:
-            self.shortcut = nn.Sequential(
-                nn.Conv2d(in_channels, out_channels, 1, stride),
-                nn.BatchNorm2d(out_channels)
-            )
-    
-    def forward(self, x):
-        residual = x
-        out = self.act(self.bn1(self.conv1(x)))
-        out = self.bn2(self.conv2(out))
-        out += self.shortcut(residual)
-        return self.act(out)
-
-
-class CoordinateEmbedding(nn.Module):
-    def __init__(self, channels):
-        super().__init__()
-        self.conv = nn.Conv2d(2, channels, 1)
-    
-    def forward(self, x):
-        batch, _, h, w = x.shape
-        y_coords = torch.linspace(-1, 1, h, device=x.device).view(1, 1, h, 1).repeat(batch, 1, 1, w)
-        x_coords = torch.linspace(-1, 1, w, device=x.device).view(1, 1, 1, w).repeat(batch, 1, h, 1)
-        coords = torch.cat([x_coords, y_coords], dim=1)
-        return self.conv(coords)
-
-
-class WallDoorDetector(nn.Module):
-    def __init__(self, in_channels, out_channels):
-        super().__init__()
-        # Horizontal edge detector
-        self.horizontal_conv = nn.Conv2d(in_channels, out_channels//2, kernel_size=(1, 5), padding=(0, 2))
-        # Vertical edge detector
-        self.vertical_conv = nn.Conv2d(in_channels, out_channels//2, kernel_size=(5, 1), padding=(2, 0))
-        
-    def forward(self, x):
-        h_edges = self.horizontal_conv(x)
-        v_edges = self.vertical_conv(x)
-        return torch.cat([h_edges, v_edges], dim=1)
-
-
-class PositionAwareHead(nn.Module):
-    def __init__(self, repr_dim, hidden_dim=128):
-        super().__init__()
-        self.position_decoder = nn.Sequential(
-            nn.Linear(repr_dim, hidden_dim),
-            nn.GELU(),
-            nn.Linear(hidden_dim, hidden_dim),
-            nn.GELU(),
-            nn.Linear(hidden_dim, 2)  # Output (x, y) coordinates
-        )
-    
-    def forward(self, representations):
-        return self.position_decoder(representations)
-
-
-class RoomDetector(nn.Module):
-    def __init__(self, repr_dim):
-        super().__init__()
-        self.room_classifier = nn.Sequential(
-            nn.Linear(repr_dim, 64),
-            nn.GELU(),
-            nn.Linear(64, 2)  # Binary: room 0 or room 1
-        )
-    
-    def forward(self, representations):
-        return self.room_classifier(representations)
-
-
-class TrajectoryEncoder(nn.Module):
-    def __init__(self, repr_dim, hidden_dim):
-        super().__init__()
-        self.lstm = nn.LSTM(repr_dim, hidden_dim, batch_first=True)
-        self.proj = nn.Linear(hidden_dim, repr_dim)
-    
-    def forward(self, repr_sequence):
-        _, (h_n, _) = self.lstm(repr_sequence)
-        return self.proj(h_n[-1])
-
-
-class AttentivePredictor(nn.Module):
-    def __init__(self, repr_dim, action_dim, hidden_dim):
-        super().__init__()
-        self.attention = nn.MultiheadAttention(hidden_dim, num_heads=4)
-        self.repr_proj = nn.Linear(repr_dim, hidden_dim)
-        self.action_proj = nn.Linear(action_dim, hidden_dim)
-        self.output_proj = nn.Linear(hidden_dim, repr_dim)
-    
-    def forward(self, repr, action):
-        repr_proj = self.repr_proj(repr).unsqueeze(0)
-        action_proj = self.action_proj(action).unsqueeze(0)
-        
-        # Cross-attention between representation and action
-        attended, _ = self.attention(repr_proj, action_proj, action_proj)
-        return self.output_proj(attended.squeeze(0))
-
 
 
 class Prober(torch.nn.Module):
@@ -148,25 +40,6 @@ class Prober(torch.nn.Module):
     def forward(self, e):
         output = self.prober(e)
         return output
-
-
-I'll provide a complete modified JEPA class with all the suggested improvements tailored for the two-room environment task:
-pythonfrom typing import List
-import numpy as np
-from torch import nn
-from torch.nn import functional as F
-import torch
-from typing import Optional, Tuple, Dict, List
-
-
-def build_mlp(layers_dims: List[int]):
-    layers = []
-    for i in range(len(layers_dims) - 2):
-        layers.append(nn.Linear(layers_dims[i], layers_dims[i + 1]))
-        layers.append(nn.BatchNorm1d(layers_dims[i + 1]))
-        layers.append(nn.GELU())  # Changed from ReLU to GELU
-    layers.append(nn.Linear(layers_dims[-2], layers_dims[-1]))
-    return nn.Sequential(*layers)
 
 
 class ResidualBlock(nn.Module):
