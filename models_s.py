@@ -11,7 +11,7 @@ def build_mlp(layers_dims: List[int]):
     for i in range(len(layers_dims) - 2):
         layers.append(nn.Linear(layers_dims[i], layers_dims[i + 1]))
         layers.append(nn.BatchNorm1d(layers_dims[i + 1]))
-        layers.append(nn.GELU())  # Changed from ReLU to GELU
+        layers.append(nn.ReLU())
     layers.append(nn.Linear(layers_dims[-2], layers_dims[-1]))
     return nn.Sequential(*layers)
 
@@ -49,7 +49,7 @@ class ResidualBlock(nn.Module):
         self.bn1 = nn.BatchNorm2d(out_channels)
         self.conv2 = nn.Conv2d(out_channels, out_channels, 3, 1, 1)
         self.bn2 = nn.BatchNorm2d(out_channels)
-        self.act = nn.GELU()
+        self.act = nn.ReLU()
         
         self.shortcut = nn.Sequential()
         if stride != 1 or in_channels != out_channels:
@@ -98,9 +98,9 @@ class PositionAwareHead(nn.Module):
         super().__init__()
         self.position_decoder = nn.Sequential(
             nn.Linear(repr_dim, hidden_dim),
-            nn.GELU(),
+            nn.ReLU(),
             nn.Linear(hidden_dim, hidden_dim),
-            nn.GELU(),
+            nn.ReLU(),
             nn.Linear(hidden_dim, 2)  # Output (x, y) coordinates
         )
     
@@ -113,7 +113,7 @@ class RoomDetector(nn.Module):
         super().__init__()
         self.room_classifier = nn.Sequential(
             nn.Linear(repr_dim, 64),
-            nn.GELU(),
+            nn.ReLU(),
             nn.Linear(64, 2)  # Binary: room 0 or room 1
         )
     
@@ -184,10 +184,10 @@ class JEPA(nn.Module):
             ResidualBlock(256, 512, stride=2),  # 9x9
             nn.Conv2d(512, 512, kernel_size=3, stride=2, padding=1),  # 5x5
             nn.BatchNorm2d(512),
-            nn.GELU(),
+            nn.ReLU(),
             nn.Flatten(),
             nn.Linear(512 * 5 * 5, hidden_dim),
-            nn.GELU(),
+            nn.ReLU(),
             nn.Linear(hidden_dim, repr_dim)
         )
         
@@ -204,9 +204,9 @@ class JEPA(nn.Module):
         if use_vicreg:
             self.expander = nn.Sequential(
                 nn.Linear(repr_dim, hidden_dim),
-                nn.GELU(),
+                nn.ReLU(),
                 nn.Linear(hidden_dim, hidden_dim),
-                nn.GELU(),
+                nn.ReLU(),
                 nn.Linear(hidden_dim, hidden_dim * 2)
             )
         
@@ -221,15 +221,15 @@ class JEPA(nn.Module):
         
         self.move_predictor = nn.Sequential(
             nn.Linear(predictor_input_dim, hidden_dim),
-            nn.GELU(),
+            nn.ReLU(),
             nn.Linear(hidden_dim, hidden_dim),
-            nn.GELU(),
+            nn.ReLU(),
             nn.Linear(hidden_dim, repr_dim)
         )
         
         self.still_predictor = nn.Sequential(
             nn.Linear(repr_dim, hidden_dim),
-            nn.GELU(),
+            nn.ReLU(),
             nn.Linear(hidden_dim, repr_dim)
         )
         
@@ -237,9 +237,9 @@ class JEPA(nn.Module):
             # Latent predictor with beta-VAE style regularization
             self.latent_predictor = nn.Sequential(
                 nn.Linear(repr_dim + action_input_dim, hidden_dim),
-                nn.GELU(),
+                nn.ReLU(),
                 nn.Linear(hidden_dim, hidden_dim),
-                nn.GELU(),
+                nn.ReLU(),
                 nn.Linear(hidden_dim, latent_dim * 2)  # Mean and log_std
             )
     
