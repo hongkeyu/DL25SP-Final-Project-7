@@ -1,0 +1,12 @@
+.vscode/settings.json
+model_weights.pth
+*.pth
+*.pyc
+*.pyc
+__pycache__/configs.cpython-310.pyc
+/__pycache__
+*.npy
+/runs
+/__pycache__
+*.pyc
+/__pycache__
