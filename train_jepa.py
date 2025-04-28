@@ -5,6 +5,8 @@ import torch.nn.functional as F
 import numpy as np
 import argparse
 from torch.utils.data import DataLoader
+from torch.utils.tensorboard import SummaryWriter
+from tqdm import tqdm
 
 # Import your JEPA model
 from models import JEPAWorldModel, JEPA
@@ -64,6 +66,10 @@ def train_jepa(args, train_loader, val_loader, model, device):
     """Train the JEPA model with VICReg regularization."""
     model.to(device)
     
+    # Initialize TensorBoard writer
+    log_dir = os.path.join(args.save_dir, 'runs')
+    writer = SummaryWriter(log_dir=log_dir)
+    
     # Create optimizer and scheduler
     optimizer, scheduler = create_optimizer_and_scheduler(model, args, train_loader)
     
@@ -76,7 +82,8 @@ def train_jepa(args, train_loader, val_loader, model, device):
     
     jepa = model.jepa  # Access the JEPA model inside JEPAWorldModel
     
-    for epoch in range(args.epochs):
+    # Wrap epoch loop with tqdm
+    for epoch in tqdm(range(args.epochs), desc="Epochs"):
         # Training
         model.train()
         train_loss = 0
@@ -84,17 +91,15 @@ def train_jepa(args, train_loader, val_loader, model, device):
         reg_loss_total = 0
         vicreg_loss_total = 0
         
-        for batch_idx, batch in enumerate(train_loader):
+        # Wrap batch loop with tqdm
+        batch_iterator = tqdm(train_loader, desc=f"Epoch {epoch+1}/{args.epochs} Training", leave=False)
+        for batch_idx, batch in enumerate(batch_iterator):
             states = batch.states.to(device)  # [B, T+1, C, H, W]
             actions = batch.actions.to(device)  # [B, T, 2]
-            
-            print("States shape:", states.shape)
-            print("Actions shape:", actions.shape)
             
             # Forward pass
             # Get initial state and encode it
             init_state = states[:, 0:1]  # [B, 1, C, H, W]
-            print("Init state shape:", init_state.shape)
             
             # Get predicted representations
             pred_reprs = model(init_state, actions)  # [T+1, B, repr_dim]
@@ -138,20 +143,31 @@ def train_jepa(args, train_loader, val_loader, model, device):
             optimizer.step()
             scheduler.adjust_learning_rate(step)
             
-            # Log progress
+            # Log progress and write to TensorBoard
+            current_lr = optimizer.param_groups[0]['lr']
+            writer.add_scalar('Learning Rate', current_lr, step)
+            
             train_loss += loss.item()
             pred_loss_total += pred_loss.item()
-            reg_loss_total += reg_loss.item() if isinstance(reg_loss, torch.Tensor) else 0
-            vicreg_loss_total += vicreg_loss.item() if isinstance(vicreg_loss, torch.Tensor) else 0
+            reg_loss_item = reg_loss.item() if isinstance(reg_loss, torch.Tensor) else 0
+            vicreg_loss_item = vicreg_loss.item() if isinstance(vicreg_loss, torch.Tensor) else 0
+            reg_loss_total += reg_loss_item
+            vicreg_loss_total += vicreg_loss_item
             
-            if (batch_idx + 1) % args.log_interval == 0:
-                print(f"Epoch {epoch+1}/{args.epochs}, Batch {batch_idx+1}/{len(train_loader)}, "
-                      f"Loss: {loss.item():.4f}, Pred Loss: {pred_loss.item():.4f}, "
-                      f"Reg Loss: {reg_loss.item():.4f}, VICReg Loss: {vicreg_loss.item():.4f}")
+            # Removed interval print, but keep TensorBoard logging interval
+            if step % args.log_interval == 0:
+                # Write batch losses to TensorBoard
+                writer.add_scalar('Loss/train_batch', loss.item(), step)
+                writer.add_scalar('Loss/pred_batch', pred_loss.item(), step)
+                writer.add_scalar('Loss/reg_batch', reg_loss_item, step)
+                writer.add_scalar('Loss/vicreg_batch', vicreg_loss_item, step)
                 if not args.no_vicreg:
-                    print(f"  VICReg details - Var Loss: {vicreg_info['var_loss']:.4f}, "
-                          f"Cov Loss: {vicreg_info['cov_loss']:.4f}")
-            
+                    writer.add_scalar('VICReg/var_loss_batch', vicreg_info['var_loss'], step)
+                    writer.add_scalar('VICReg/cov_loss_batch', vicreg_info['cov_loss'], step)
+                
+                # Update tqdm description with current loss
+                batch_iterator.set_postfix(loss=f"{loss.item():.4f}", pred=f"{pred_loss.item():.4f}", reg=f"{reg_loss_item:.4f}", vic=f"{vicreg_loss_item:.4f}")
+
             step += 1
         
         avg_train_loss = train_loss / len(train_loader)
@@ -165,12 +181,20 @@ def train_jepa(args, train_loader, val_loader, model, device):
               f"Avg Reg Loss: {avg_reg_loss:.4f}, "
               f"Avg VICReg Loss: {avg_vicreg_loss:.4f}")
         
+        # Write average epoch training losses to TensorBoard
+        writer.add_scalar('Loss/train_epoch', avg_train_loss, epoch)
+        writer.add_scalar('Loss/pred_epoch', avg_pred_loss, epoch)
+        writer.add_scalar('Loss/reg_epoch', avg_reg_loss, epoch)
+        writer.add_scalar('Loss/vicreg_epoch', avg_vicreg_loss, epoch)
+        
         # Validation
         model.eval()
         val_loss = 0
         
+        # Wrap validation loop with tqdm (optional, but consistent)
+        val_iterator = tqdm(val_loader, desc=f"Epoch {epoch+1}/{args.epochs} Validation", leave=False)
         with torch.no_grad():
-            for batch in val_loader:
+            for batch in val_iterator:
                 states = batch.states.to(device)
                 actions = batch.actions.to(device)
                 
@@ -188,6 +212,9 @@ def train_jepa(args, train_loader, val_loader, model, device):
         
         avg_val_loss = val_loss / len(val_loader)
         print(f"Validation Loss: {avg_val_loss:.4f}")
+        
+        # Write validation loss to TensorBoard
+        writer.add_scalar('Loss/validation', avg_val_loss, epoch)
         
         # Save best model
         if avg_val_loss < best_val_loss:
@@ -209,6 +236,9 @@ def train_jepa(args, train_loader, val_loader, model, device):
         'val_loss': avg_val_loss,
     }, final_save_path)
     print(f"Final model saved to {final_save_path}")
+    
+    # Close TensorBoard writer
+    writer.close()
     
     return model
 
